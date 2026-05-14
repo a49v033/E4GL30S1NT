@@ -1,22 +1,43 @@
-#!/bin/bash
-# This script installs runtime dependencies and specified type hints.
+#!/usr/bin/env bash
+# Developer setup — installs the package in editable mode with test dependencies.
+set -euo pipefail
 
-echo "Installing runtime dependencies from requirements.txt..."
-if [ -f "requirements.txt" ]; then
-    pip3 install -r requirements.txt
-else
-    echo "ERROR: requirements.txt not found!"
-    exit 1
+g="\033[1;32m"
+r="\033[1;31m"
+b="\033[1;34m"
+w="\033[0m"
+
+info() { echo -e "${b}[>]${w} $*"; }
+ok()   { echo -e "${g}[✔]${w} $*"; }
+die()  { echo -e "${r}[✘]${w} $*" >&2; exit 1; }
+
+# --- uv check / install --------------------------------------------------------
+if ! command -v uv &>/dev/null; then
+  info "uv not found -- installing..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
 fi
+ok "uv $(uv --version)"
+
+# --- Python check --------------------------------------------------------------
+PY_VER=$(uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+info "Python $PY_VER"
+
+# --- Sync all dependencies (including dev) -------------------------------------
+info "Installing dependencies from uv.lock..."
+uv sync --dev
+ok "Dependencies installed"
+
+# --- Verify entry points -------------------------------------------------------
+info "Verifying entry points..."
+uv run eagleosint --help > /dev/null && ok "eagleosint CLI works"
+uv run e4gl --help > /dev/null && ok "e4gl alias works"
+
+# --- Run tests ------------------------------------------------------------------
+info "Running test suite..."
+uv run pytest -v --tb=short
+ok "All tests passed"
 
 echo ""
-echo "Installing user-specified type hints (types-botocore, types-boto3) and checking for others with mypy..."
-pip3 install types-botocore types-boto3
-
-# Running mypy to install types for E4GL30S1NT.py
-# This might download additional type stubs if mypy deems them necessary for the script.
-mypy --install-types --non-interactive E4GL30S1NT.py
-
-echo ""
-echo "Dependency installation process complete."
-echo "Note: If mypy reported installing new stubs, you might want to re-run static analysis or type checking on your environment."
+ok "Dev setup complete. Run commands with: uv run eagleosint"
+ok "Or activate the venv: source .venv/bin/activate"
